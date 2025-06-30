@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-
+import numpy as np
 # 设置文件路径
 base_path = r'D:\myproject_student\shixun1\day3'
 files = [
@@ -65,3 +65,61 @@ print(merged_df.describe())
 output_path = os.path.join(base_path, '2015-2017_合并数据.csv')
 merged_df.to_csv(output_path, index=False, encoding='utf-8-sig')
 print(f"\n合并数据已保存至: {output_path}")
+
+# 5. 计算每个城市2015-2017年GDP的年均增长率
+# 创建GDP透视表
+gdp_pivot = merged_df.pivot(index='地区', columns='年份', values='国内生产总值')
+
+# 确保年份列是整数类型
+gdp_pivot.columns = gdp_pivot.columns.astype(int)
+
+# 计算年均增长率 = (2017年GDP / 2015年GDP)^(1/2) - 1
+gdp_pivot['年均增长率'] = ((gdp_pivot[2017] / gdp_pivot[2015]) ** (1 / 2)) - 1
+
+# 处理无穷大和缺失值
+gdp_pivot.replace([np.inf, -np.inf], np.nan, inplace=True)
+gdp_pivot.dropna(subset=['年均增长率'], inplace=True)
+
+# 找出增长率最高和最低的五个城市
+top5_high = gdp_pivot.nlargest(5, '年均增长率')
+top5_low = gdp_pivot.nsmallest(5, '年均增长率')
+
+print("=" * 50)
+print("GDP年均增长率最高的5个城市：")
+print(top5_high[[2015, 2016, 2017, '年均增长率']])  # 使用整数年份
+print("\nGDP年均增长率最低的5个城市：")
+print(top5_low[[2015, 2016, 2017, '年均增长率']])  # 使用整数年份
+
+# 6. 对医院、卫生院数进行归一化处理（Min-Max标准化）
+# 按年份分组计算最小值和最大值
+min_max = merged_df.groupby('年份')['医院、卫生院数'].agg(['min', 'max']).reset_index()
+
+# 合并回主表进行归一化
+merged_df = pd.merge(merged_df, min_max, on='年份')
+merged_df['医院、卫生院数_归一化'] = (merged_df['医院、卫生院数'] - merged_df['min']) / (
+            merged_df['max'] - merged_df['min'])
+
+# 按年份比较各城市医疗资源的变化
+medical_resource = merged_df.pivot_table(index='地区',
+                                         columns='年份',
+                                         values='医院、卫生院数_归一化',
+                                         aggfunc='mean')
+
+print("\n" + "=" * 50)
+print("各城市医疗资源归一化值变化（2015-2017年）：")
+print(medical_resource)
+
+# 7. 提取北京、上海、广州、深圳四个城市2015-2017的GDP和社会商品零售总额数据
+target_cities = ['北京', '上海', '广州', '深圳']
+filtered_df = merged_df[merged_df['地区'].isin(target_cities)][
+    ['地区', '年份', '国内生产总值', '社会商品零售总额']
+]
+
+# 保存到新CSV文件
+output_path = os.path.join(base_path, '一线城市GDP与消费数据.csv')
+filtered_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+
+print("\n" + "=" * 50)
+print("四个一线城市数据已保存至:", output_path)
+print("提取的数据预览：")
+print(filtered_df.pivot(index='地区', columns='年份', values=['国内生产总值', '社会商品零售总额']))
